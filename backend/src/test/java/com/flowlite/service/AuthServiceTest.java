@@ -40,6 +40,7 @@ class AuthServiceTest {
     @Mock private JwtUtil jwtUtil;
     @Mock private AuthenticationManager authenticationManager;
     @Mock private InputValidator inputValidator;
+    @Mock private InputSanitizer inputSanitizer;
     @Mock private EmailService emailService;
 
     @InjectMocks
@@ -86,10 +87,10 @@ class AuthServiceTest {
         when(inputValidator.isValidEmail(anyString())).thenReturn(true);
         when(inputValidator.isValidUsername(anyString())).thenReturn(true);
         when(inputValidator.isStrongPassword(anyString())).thenReturn(true);
-        when(inputValidator.sanitizeInput(anyString())).thenReturn("testuser");
+        when(inputSanitizer.sanitizeStrict(anyString())).thenReturn("testuser");
         when(inputValidator.sanitizeOrganizationName(anyString())).thenReturn("Test Org");
         when(inputValidator.isValidOrganizationName(anyString())).thenReturn(true);
-        when(userRepository.existsByUsername(anyString())).thenReturn(false);
+        when(userRepository.existsByUsernameAndActiveTrue(anyString())).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase(anyString())).thenReturn(false);
         when(organizationRepository.existsByNameIgnoreCase(anyString())).thenReturn(false);
         when(organizationRepository.save(any(Organization.class))).thenReturn(testOrg);
@@ -118,10 +119,10 @@ class AuthServiceTest {
         when(inputValidator.isValidEmail(anyString())).thenReturn(true);
         when(inputValidator.isValidUsername(anyString())).thenReturn(true);
         when(inputValidator.isStrongPassword(anyString())).thenReturn(true);
-        when(inputValidator.sanitizeInput(anyString())).thenReturn("testuser");
+        when(inputSanitizer.sanitizeStrict(anyString())).thenReturn("testuser");
         when(inputValidator.sanitizeOrganizationName(anyString())).thenReturn("Test Org");
         when(inputValidator.isValidOrganizationName(anyString())).thenReturn(true);
-        when(userRepository.existsByUsername("testuser")).thenReturn(true);
+        when(userRepository.existsByUsernameAndActiveTrue("testuser")).thenReturn(true);
 
         assertThatThrownBy(() -> authService.register(validRegisterRequest))
                 .isInstanceOf(RuntimeException.class)
@@ -134,10 +135,10 @@ class AuthServiceTest {
         when(inputValidator.isValidEmail(anyString())).thenReturn(true);
         when(inputValidator.isValidUsername(anyString())).thenReturn(true);
         when(inputValidator.isStrongPassword(anyString())).thenReturn(true);
-        when(inputValidator.sanitizeInput(anyString())).thenReturn("testuser");
+        when(inputSanitizer.sanitizeStrict(anyString())).thenReturn("testuser");
         when(inputValidator.sanitizeOrganizationName(anyString())).thenReturn("Test Org");
         when(inputValidator.isValidOrganizationName(anyString())).thenReturn(true);
-        when(userRepository.existsByUsername(anyString())).thenReturn(false);
+        when(userRepository.existsByUsernameAndActiveTrue(anyString())).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase(anyString())).thenReturn(true);
 
         assertThatThrownBy(() -> authService.register(validRegisterRequest))
@@ -173,10 +174,10 @@ class AuthServiceTest {
         when(inputValidator.isValidEmail(anyString())).thenReturn(true);
         when(inputValidator.isValidUsername(anyString())).thenReturn(true);
         when(inputValidator.isStrongPassword(anyString())).thenReturn(true);
-        when(inputValidator.sanitizeInput(anyString())).thenReturn("testuser");
+        when(inputSanitizer.sanitizeStrict(anyString())).thenReturn("testuser");
         when(inputValidator.sanitizeOrganizationName(anyString())).thenReturn("Test Org");
         when(inputValidator.isValidOrganizationName(anyString())).thenReturn(true);
-        when(userRepository.existsByUsername(anyString())).thenReturn(false);
+        when(userRepository.existsByUsernameAndActiveTrue(anyString())).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase(anyString())).thenReturn(false);
         when(organizationRepository.existsByNameIgnoreCase("Test Org")).thenReturn(true);
 

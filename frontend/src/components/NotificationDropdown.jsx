@@ -7,28 +7,37 @@ import { Client } from '@stomp/stompjs';
 import toast from 'react-hot-toast';
 
 const NotificationDropdown = () => {
-    const { user } = useAuth();
+    const { user, loading: authLoading } = useAuth();
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [isOpen, setIsOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState(null);
     const dropdownRef = useRef(null);
     const stompClientRef = useRef(null);
 
     // Fetch initial notifications
     const fetchNotifications = async () => {
         try {
+            setFetchError(null);
             const response = await api.get('/notifications');
             setNotifications(response.data);
             setUnreadCount(response.data.filter(n => !n.read).length);
         } catch (error) {
-            console.error('Failed to fetch notifications', error);
+            const errorMsg = error.response?.status === 400
+                ? 'Failed to fetch notifications - invalid request'
+                : error.response?.status === 401
+                ? 'Not authenticated'
+                : 'Failed to fetch notifications';
+            console.error('Failed to fetch notifications:', error);
+            setFetchError(errorMsg);
         }
     };
 
     // Initialize WebSocket connection
     useEffect(() => {
-        if (!user) return;
+        // Don't initialize until auth is complete and user exists
+        if (authLoading || !user) return;
 
         fetchNotifications();
 
@@ -36,8 +45,8 @@ const NotificationDropdown = () => {
         const client = new Client({
             webSocketFactory: () => socket,
             onConnect: () => {
-                // Subscribe to user's private notification topic
-                client.subscribe(`/topic/user/${user.userId}/notifications`, (message) => {
+                // Subscribe to user-scoped notification queue
+                client.subscribe(`/user/${user.username}/queue/notifications`, (message) => {
                     const newNotification = JSON.parse(message.body);
                     setNotifications(prev => [newNotification, ...prev]);
                     setUnreadCount(prev => prev + 1);
@@ -61,7 +70,7 @@ const NotificationDropdown = () => {
                 client.deactivate();
             }
         };
-    }, [user]);
+    }, [user, authLoading]);
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -156,7 +165,14 @@ const NotificationDropdown = () => {
                     </div>
 
                     <div className="max-h-[60vh] overflow-y-auto">
-                        {notifications.length === 0 ? (
+                        {fetchError ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-center px-4">
+                                <div className="p-3 rounded-full bg-red-500/10 mb-3">
+                                    <X className="h-6 w-6 text-red-400" />
+                                </div>
+                                <p className="text-sm text-red-400">{fetchError}</p>
+                            </div>
+                        ) : notifications.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-8 text-center px-4">
                                 <div className="p-3 rounded-full bg-slate-800/50 mb-3">
                                     <Bell className="h-6 w-6 text-slate-500" />

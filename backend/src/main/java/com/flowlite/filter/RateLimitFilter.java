@@ -1,8 +1,10 @@
 package com.flowlite.filter;
 
+import com.flowlite.config.JwtUtil;
 import com.flowlite.config.RateLimitConfig;
 import io.github.bucket4j.Bucket;
 import jakarta.servlet.*;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
@@ -11,6 +13,8 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 
 /**
  * Rate Limiting Filter
@@ -23,9 +27,11 @@ public class RateLimitFilter implements Filter {
     private static final Logger logger = LoggerFactory.getLogger(RateLimitFilter.class);
     
     private final RateLimitConfig rateLimitConfig;
+    private final JwtUtil jwtUtil;
     
-    public RateLimitFilter(RateLimitConfig rateLimitConfig) {
+    public RateLimitFilter(RateLimitConfig rateLimitConfig, JwtUtil jwtUtil) {
         this.rateLimitConfig = rateLimitConfig;
+        this.jwtUtil = jwtUtil;
     }
     
     @Override
@@ -102,31 +108,27 @@ public class RateLimitFilter implements Filter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             try {
                 String token = authHeader.substring(7);
-                // Simple base64 decode of JWT payload to extract username
-                String[] parts = token.split("\\.");
-                if (parts.length == 3) {
-                    String payload = new String(
-                        java.util.Base64.getUrlDecoder().decode(parts[1])
-                    );
-                    int subIndex = payload.indexOf("\"sub\":\"");
-                    if (subIndex != -1) {
-                        int start = subIndex + 7;
-                        int end = payload.indexOf("\"", start);
-                        if (end != -1) {
-                            return "user:" + payload.substring(start, end);
-                        }
-                    }
+                String username = jwtUtil.extractUsername(token);
+                if (username != null) {
+                    return "user:" + username;
                 }
             } catch (Exception e) {
                 // Fallback to IP if JWT parsing fails
             }
         }
         
-        // Check cookie for JWT (cookie-based auth)
+        // Check cookie for JWT — extract real username instead of falling back to IP
         if (request.getCookies() != null) {
-            for (jakarta.servlet.http.Cookie cookie : request.getCookies()) {
+            for (Cookie cookie : request.getCookies()) {
                 if ("jwt".equals(cookie.getName())) {
-                    return "cookie-user:" + clientIP;
+                    try {
+                        String username = jwtUtil.extractUsername(cookie.getValue());
+                        if (username != null) {
+                            return "user:" + username;
+                        }
+                    } catch (Exception e) {
+                        // Invalid cookie — fall through to IP
+                    }
                 }
             }
         }
@@ -151,19 +153,39 @@ public class RateLimitFilter implements Filter {
     }
     
     /**
-     * Extract client IP considering proxies
+     * Extract client IP — only trust proxy headers from known trusted proxies.
+     * Prevents IP spoofing via X-Forwarded-For header manipulation.
      */
     private String getClientIP(HttpServletRequest request) {
-        String xfHeader = request.getHeader("X-Forwarded-For");
-        if (xfHeader != null && !xfHeader.isEmpty()) {
-            return xfHeader.split(",")[0].trim();
+        String remoteAddr = request.getRemoteAddr();
+        
+        // Only trust X-Forwarded-For if request comes from trusted proxy
+        if (isTrustedProxy(remoteAddr)) {
+            String xfHeader = request.getHeader("X-Forwarded-For");
+            if (xfHeader != null && !xfHeader.isEmpty()) {
+                return xfHeader.split(",")[0].trim();
+            }
+            
+            String xRealIP = request.getHeader("X-Real-IP");
+            if (xRealIP != null && !xRealIP.isEmpty()) {
+                return xRealIP;
+            }
         }
         
-        String xRealIP = request.getHeader("X-Real-IP");
-        if (xRealIP != null && !xRealIP.isEmpty()) {
-            return xRealIP;
+        return remoteAddr;
+    }
+    
+    /**
+     * Check if the remote address is a trusted proxy (loopback or Docker subnets).
+     */
+    private boolean isTrustedProxy(String remoteAddr) {
+        if (remoteAddr == null) return false;
+        try {
+            InetAddress addr = InetAddress.getByName(remoteAddr);
+            return addr.isLoopbackAddress()
+                || addr.isSiteLocalAddress();  // 10.x, 172.16-31.x, 192.168.x
+        } catch (UnknownHostException e) {
+            return false;
         }
-        
-        return request.getRemoteAddr();
     }
 }

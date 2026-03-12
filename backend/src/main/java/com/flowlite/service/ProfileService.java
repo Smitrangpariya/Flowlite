@@ -6,6 +6,7 @@ import com.flowlite.dto.ProfileRequest;
 import com.flowlite.entity.User;
 import com.flowlite.repository.UserRepository;
 import com.flowlite.validation.InputValidator;
+import com.flowlite.service.InputSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,6 +21,7 @@ public class ProfileService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final InputValidator inputValidator;
+    private final InputSanitizer inputSanitizer;
 
     public AuthResponse getUserProfile(User user) {
         return mapToAuthResponse(user, null);
@@ -52,6 +54,12 @@ public class ProfileService {
             user.setEmail(request.getEmail());
             user.setEmailVerified(false); // Reset verification if email changes
             // TODO: Trigger new verification email?
+        }
+        
+        // Update job title if provided (metadata only, no auth impact)
+        if (request.getJobTitle() != null) {
+            String sanitizedJobTitle = inputSanitizer.sanitizeStrict(request.getJobTitle().trim());
+            user.setJobTitle(sanitizedJobTitle.isEmpty() ? null : sanitizedJobTitle);
         }
 
         User savedUser = userRepository.save(user);
@@ -92,7 +100,8 @@ public class ProfileService {
             user.getRole(),
             user.getId(),
             user.getOrganization() != null ? user.getOrganization().getId() : null,
-            user.getOrganization() != null ? user.getOrganization().getName() : null
+            user.getOrganization() != null ? user.getOrganization().getName() : null,
+            user.getJobTitle()
         );
     }
 }

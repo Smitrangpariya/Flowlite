@@ -3,6 +3,8 @@ package com.flowlite.controller;
 import com.flowlite.dto.AuthResponse;
 import com.flowlite.dto.LoginRequest;
 import com.flowlite.dto.RegisterRequest;
+import com.flowlite.repository.UserRepository;
+import com.flowlite.config.JwtUtil;
 import com.flowlite.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -22,6 +24,8 @@ import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Map;
 
@@ -40,6 +44,9 @@ public class AuthController {
     
     @Value("${jwt.expiration:3600000}")
     private long jwtExpiration;
+    
+    private final UserRepository userRepository;
+    private final JwtUtil jwtUtil;
     
     /**
      * Determine SameSite cookie policy based on active profile.
@@ -69,6 +76,9 @@ public class AuthController {
                 .build();
         httpResponse.addHeader(HttpHeaders.SET_COOKIE, jwtCookie.toString());
         
+        // Clear token from response body — already in httpOnly cookie
+        response.setToken(null);
+        
         return ResponseEntity.ok(response);
     }
     
@@ -94,7 +104,41 @@ public class AuthController {
                 .build();
         httpResponse.addHeader(HttpHeaders.SET_COOKIE, jwtCookie.toString());
         
+        // Clear token from response body — already in httpOnly cookie
+        response.setToken(null);
+        
         return ResponseEntity.ok(response);
+    }
+    
+    @Operation(summary = "Get current user", description = "Returns the authenticated user's profile from the JWT cookie session")
+    @GetMapping("/me")
+    public ResponseEntity<Map<String, Object>> getCurrentUser(HttpServletRequest request) {
+        // Get username from SecurityContext (set by JwtFilter)
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+        }
+        
+        String username = auth.getName();
+        var userOpt = userRepository.findByUsername(username);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(401).body(Map.of("error", "User not found"));
+        }
+        
+        var user = userOpt.get();
+        var org = user.getOrganization();
+        
+        return ResponseEntity.ok(Map.of(
+            "userId", user.getId(),
+            "username", user.getUsername(),
+            "email", user.getEmail(),
+            "role", user.getRole().name(),
+            "firstName", user.getFirstName() != null ? user.getFirstName() : "",
+            "lastName", user.getLastName() != null ? user.getLastName() : "",
+            "jobTitle", user.getJobTitle() != null ? user.getJobTitle() : "",
+            "organizationId", org != null ? org.getId() : "",
+            "organizationName", org != null ? org.getName() : ""
+        ));
     }
     
     @Operation(summary = "Logout", description = "Revokes the current JWT token")
@@ -203,29 +247,42 @@ public class AuthController {
         
         try {
             authService.resendVerificationEmail(email);
-            return ResponseEntity.ok(Map.of(
-                "message", "Verification email sent!"
-            ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest()
-                .body(Map.of("error", e.getMessage()));
+            log.warn("Resend verification attempt: {}", e.getMessage());
+            // Silent — never reveal if email exists
         }
+        return ResponseEntity.ok(Map.of("message",
+            "If that email is registered and unverified, a new link has been sent."));
     }
     
     /**
-     * Extract client IP considering proxies
+     * Extract client IP — only trust proxy headers from known trusted proxies.
      */
     private String getClientIP(HttpServletRequest request) {
-        String xfHeader = request.getHeader("X-Forwarded-For");
-        if (xfHeader != null && !xfHeader.isEmpty()) {
-            return xfHeader.split(",")[0].trim();
+        String remoteAddr = request.getRemoteAddr();
+        
+        if (isTrustedProxy(remoteAddr)) {
+            String xfHeader = request.getHeader("X-Forwarded-For");
+            if (xfHeader != null && !xfHeader.isEmpty()) {
+                return xfHeader.split(",")[0].trim();
+            }
+            
+            String xRealIP = request.getHeader("X-Real-IP");
+            if (xRealIP != null && !xRealIP.isEmpty()) {
+                return xRealIP;
+            }
         }
         
-        String xRealIP = request.getHeader("X-Real-IP");
-        if (xRealIP != null && !xRealIP.isEmpty()) {
-            return xRealIP;
+        return remoteAddr;
+    }
+    
+    private boolean isTrustedProxy(String remoteAddr) {
+        if (remoteAddr == null) return false;
+        try {
+            InetAddress addr = InetAddress.getByName(remoteAddr);
+            return addr.isLoopbackAddress() || addr.isSiteLocalAddress();
+        } catch (UnknownHostException e) {
+            return false;
         }
-        
-        return request.getRemoteAddr();
     }
 }

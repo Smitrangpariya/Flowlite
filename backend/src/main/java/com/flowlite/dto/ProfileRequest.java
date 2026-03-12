@@ -19,4 +19,7 @@ public class ProfileRequest {
     
     @Email(message = "Invalid email format")
     private String email;
+    
+    @Size(max = 100, message = "Job title must not exceed 100 characters")
+    private String jobTitle;
 }

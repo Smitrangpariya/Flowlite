@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -30,6 +31,7 @@ public class ProfileController {
 
     @Operation(summary = "Get current user profile", description = "Returns the profile of the currently authenticated user")
     @GetMapping("/me")
+    @Transactional(readOnly = true)
     public ResponseEntity<AuthResponse> getMyProfile() {
         User currentUser = userService.getCurrentUser();
         AuthResponse profile = profileService.getUserProfile(currentUser);
@@ -38,6 +40,7 @@ public class ProfileController {
 
     @Operation(summary = "Update profile", description = "Update first name, last name, or email")
     @PutMapping("/me")
+    @Transactional
     public ResponseEntity<AuthResponse> updateMyProfile(@Valid @RequestBody ProfileRequest request) {
         User currentUser = userService.getCurrentUser();
         AuthResponse updatedProfile = profileService.updateUserProfile(currentUser, request);
@@ -50,6 +53,7 @@ public class ProfileController {
         @ApiResponse(responseCode = "400", description = "Invalid current password or weak new password")
     })
     @PostMapping("/me/password")
+    @Transactional
     public ResponseEntity<Map<String, String>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         User currentUser = userService.getCurrentUser();
         try {

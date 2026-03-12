@@ -67,10 +67,10 @@ public class UserController {
     }
     
     private UserDTO toDTO(User user) {
-        return new UserDTO(user.getId(), user.getUsername(), user.getEmail(), user.getRole().name());
+        return new UserDTO(user.getId(), user.getUsername(), user.getEmail(), user.getRole().name(), user.getJobTitle());
     }
     
-    public record UserDTO(Long id, String username, String email, String role) {}
+    public record UserDTO(Long id, String username, String email, String role, String jobTitle) {}
 }
 
 

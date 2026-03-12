@@ -23,10 +23,12 @@ public class AuthResponse {
     private Long userId;
     private Long organizationId;
     private String organizationName;
+    private String jobTitle;
 
     public AuthResponse(String token, String username, String firstName, String lastName,
                         String email, Role role, Long userId,
-                        Long organizationId, String organizationName) {
+                        Long organizationId, String organizationName,
+                        String jobTitle) {
         this.token = token;
         this.username = username;
         this.firstName = firstName;
@@ -36,5 +38,6 @@ public class AuthResponse {
         this.userId = userId;
         this.organizationId = organizationId;
         this.organizationName = organizationName;
+        this.jobTitle = jobTitle;
     }
 }

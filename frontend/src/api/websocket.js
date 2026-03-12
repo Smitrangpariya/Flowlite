@@ -16,7 +16,7 @@ export const connectWebSocket = (orgId, onTaskEvent, onConnectionChange) => {
     }
 
     stompClient = new Client({
-        webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+        webSocketFactory: () => new SockJS('/ws'),
         // Send JWT token in STOMP CONNECT headers for server-side auth
         connectHeaders: {
             Authorization: `Bearer ${localStorage.getItem('token') || ''}`,

@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axiosConfig';
 
 const AuthContext = createContext(null);
@@ -15,20 +16,71 @@ export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [organization, setOrganization] = useState(null);
     const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
 
+    // 401 interceptor — uses React Router navigation instead of window.location
     useEffect(() => {
-        // Restore user state from localStorage (no JWT needed — the HttpOnly
-        // cookie is managed by the browser automatically).
+        const interceptor = api.interceptors.response.use(
+            (res) => res,
+            (error) => {
+                if (error.response?.status === 401) {
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('organization');
+                    setUser(null);
+                    setOrganization(null);
+                    if (!window.location.pathname.includes('/login')) {
+                        navigate('/login', { state: { from: window.location.pathname } });
+                    }
+                }
+                return Promise.reject(error);
+            }
+        );
+        return () => api.interceptors.response.eject(interceptor);
+    }, [navigate]);
+
+    // Verify session against server on page load
+    useEffect(() => {
         const storedUser = localStorage.getItem('user');
         const storedOrg = localStorage.getItem('organization');
 
         if (storedUser) {
-            setUser(JSON.parse(storedUser));
-            if (storedOrg) {
-                setOrganization(JSON.parse(storedOrg));
-            }
+            // Verify the cookie session is still valid via /api/auth/me
+            api.get('/auth/me')
+                .then((res) => {
+                    const serverData = res.data;
+                    const verifiedUser = {
+                        username: serverData.username,
+                        firstName: serverData.firstName || null,
+                        lastName: serverData.lastName || null,
+                        email: serverData.email,
+                        role: serverData.role,
+                        userId: serverData.userId,
+                        jobTitle: serverData.jobTitle || null,
+                    };
+                    const verifiedOrg = serverData.organizationId ? {
+                        id: serverData.organizationId,
+                        name: serverData.organizationName,
+                    } : null;
+
+                    // Update localStorage with server-verified data
+                    localStorage.setItem('user', JSON.stringify(verifiedUser));
+                    if (verifiedOrg) {
+                        localStorage.setItem('organization', JSON.stringify(verifiedOrg));
+                    }
+                    setUser(verifiedUser);
+                    setOrganization(verifiedOrg);
+                })
+                .catch(() => {
+                    // Cookie expired or invalid — clear everything
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('organization');
+                    setUser(null);
+                    setOrganization(null);
+                })
+                .finally(() => setLoading(false));
+        } else {
+            setLoading(false);
         }
-        setLoading(false);
     }, []);
 
     const login = async (username, password) => {
@@ -38,7 +90,7 @@ export const AuthProvider = ({ children }) => {
             // by the server. We only use the metadata fields.
             const {
                 username: userName, firstName, lastName, email,
-                role, userId, organizationId, organizationName
+                role, userId, organizationId, organizationName, jobTitle
             } = response.data;
 
             // CRITICAL: Role must exist — fail login if missing
@@ -56,7 +108,8 @@ export const AuthProvider = ({ children }) => {
                 lastName,
                 email,
                 role,
-                userId
+                userId,
+                jobTitle
             };
 
             const orgData = organizationId ? {
@@ -93,7 +146,7 @@ export const AuthProvider = ({ children }) => {
             // Token is no longer in the response body — it's set as an HttpOnly cookie
             const {
                 username: userName, firstName, lastName, email: userEmail,
-                role, userId, organizationId, organizationName: orgName
+                role, userId, organizationId, organizationName: orgName, jobTitle
             } = response.data;
 
             const userData = {
@@ -102,7 +155,8 @@ export const AuthProvider = ({ children }) => {
                 lastName,
                 email: userEmail,
                 role,
-                userId
+                userId,
+                jobTitle
             };
 
             const orgData = {
@@ -154,6 +208,33 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // B5 fix: re-fetch profile from server and update context + localStorage
+    const refreshUser = async () => {
+        try {
+            const response = await api.get('/users/me');
+            const data = response.data;
+            const userData = {
+                username: data.username,
+                firstName: data.firstName || null,
+                lastName: data.lastName || null,
+                email: data.email,
+                role: data.role,
+                userId: data.userId,
+                jobTitle: data.jobTitle || null,
+            };
+            const orgData = data.organizationId ? {
+                id: data.organizationId,
+                name: data.organizationName,
+            } : null;
+            localStorage.setItem('user', JSON.stringify(userData));
+            if (orgData) localStorage.setItem('organization', JSON.stringify(orgData));
+            setUser(userData);
+            setOrganization(orgData);
+        } catch (err) {
+            console.error('refreshUser failed', err);
+        }
+    };
+
     const hasRole = (role) => user?.role === role;
     const hasAnyRole = (roles) => roles.includes(user?.role);
 
@@ -183,6 +264,7 @@ export const AuthProvider = ({ children }) => {
         canApprove,
         canManageProjects,
         canManageUsers,
+        refreshUser,
     };
 
     return (

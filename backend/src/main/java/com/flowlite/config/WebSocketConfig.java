@@ -20,6 +20,13 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+
+import org.springframework.http.server.ServerHttpRequest;
+import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.http.server.ServletServerHttpRequest;
+import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.server.HandshakeInterceptor;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -34,18 +41,52 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        // Enable simple broker for topic subscriptions
-        config.enableSimpleBroker("/topic");
+        // Enable simple broker for topic and user-scoped queue subscriptions
+        config.enableSimpleBroker("/topic", "/queue");
         // Prefix for application destination mappings (@MessageMapping)
         config.setApplicationDestinationPrefixes("/app");
+        // Prefix for user-scoped destinations (convertAndSendToUser)
+        config.setUserDestinationPrefix("/user");
     }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // WebSocket endpoint - SockJS fallback for browser compatibility
         registry.addEndpoint("/ws")
                 .setAllowedOrigins(allowedOrigins.split(","))
+                .addInterceptors(jwtCookieHandshakeInterceptor())
                 .withSockJS();
+    }
+    
+    /**
+     * HTTP-level interceptor: reads the JWT from the httpOnly cookie during
+     * the SockJS handshake and stores it in WebSocket session attributes.
+     * The STOMP-level interceptor can then read it from there.
+     */
+    private HandshakeInterceptor jwtCookieHandshakeInterceptor() {
+        return new HandshakeInterceptor() {
+            @Override
+            public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
+                                           WebSocketHandler wsHandler, Map<String, Object> attributes) {
+                if (request instanceof ServletServerHttpRequest servletRequest) {
+                    var cookies = servletRequest.getServletRequest().getCookies();
+                    if (cookies != null) {
+                        for (var cookie : cookies) {
+                            if ("jwt".equals(cookie.getName())) {
+                                attributes.put("jwt", cookie.getValue());
+                                break;
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+            
+            @Override
+            public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
+                                       WebSocketHandler wsHandler, Exception exception) {
+                // no-op
+            }
+        };
     }
 
     @Override
@@ -78,6 +119,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                             jwt = tokenHeaders.get(0);
                         }
                     }
+                    
+                    // Fallback: read from session attributes (set by HandshakeInterceptor from cookie)
+                    if (jwt == null) {
+                        Map<String, Object> sessionAttrs = accessor.getSessionAttributes();
+                        if (sessionAttrs != null && sessionAttrs.containsKey("jwt")) {
+                            jwt = (String) sessionAttrs.get("jwt");
+                        }
+                    }
 
                     // Lenient: try to authenticate but don't fail connection if token invalid
                     // Org-scoped topics prevent cross-tenant leaks anyway
@@ -96,14 +145,18 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                                 accessor.setUser(authToken);
                                 log.debug("WebSocket authenticated for user: {}", username);
                             } else {
-                                log.warn("WebSocket JWT expired or username null, allowing connection without auth");
+                                log.warn("WebSocket JWT expired or username null — rejecting connection");
+                                throw new org.springframework.messaging.MessageDeliveryException("JWT expired");
                             }
+                        } catch (org.springframework.messaging.MessageDeliveryException e) {
+                            throw e;
                         } catch (Exception e) {
-                            log.warn("WebSocket JWT validation failed, allowing connection: {}", e.getMessage());
-                            // Don't throw — allow connection anyway
+                            log.warn("WebSocket JWT validation failed: {}", e.getMessage());
+                            throw new org.springframework.messaging.MessageDeliveryException("JWT invalid");
                         }
                     } else {
-                        log.warn("WebSocket CONNECT without JWT token - allowing connection");
+                        log.warn("WebSocket CONNECT without JWT token — rejecting");
+                        throw new org.springframework.messaging.MessageDeliveryException("Authentication required");
                     }
                 }
 

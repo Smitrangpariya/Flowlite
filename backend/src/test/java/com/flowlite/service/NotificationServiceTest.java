@@ -56,7 +56,7 @@ class NotificationServiceTest {
         notificationService.createNotification(recipient, content, type, taskId);
 
         verify(notificationRepository).save(any(Notification.class));
-        verify(messagingTemplate).convertAndSend(eq("/topic/user/1/notifications"), eq(savedNotification));
+        verify(messagingTemplate).convertAndSendToUser(eq("user1"), eq("/queue/notifications"), eq(savedNotification));
     }
 
     @Test

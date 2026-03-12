@@ -33,4 +33,7 @@ public class CreateUserRequest {
     
     @NotNull(message = "Role is required")
     private Role role;
+    
+    @Size(max = 100, message = "Job title must not exceed 100 characters")
+    private String jobTitle;
 }

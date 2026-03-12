@@ -7,6 +7,7 @@ import com.flowlite.entity.*;
 import com.flowlite.repository.*;
 import com.flowlite.config.JwtUtil;
 import com.flowlite.validation.InputValidator;
+import com.flowlite.service.InputSanitizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,6 +40,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
     private final InputValidator inputValidator;
+    private final InputSanitizer inputSanitizer;
     private final EmailService emailService;
     
     @Value("${flowlite.app.url:http://localhost:3000}")
@@ -73,8 +75,8 @@ public class AuthService {
                 throw new RuntimeException("Password too weak. Use at least 8 characters with mix of uppercase, lowercase, numbers, and symbols.");
             }
             
-            // 4. Sanitize inputs
-            String sanitizedUsername = inputValidator.sanitizeInput(request.getUsername());
+            // 4. Sanitize inputs (OWASP HTML sanitizer — not regex)
+            String sanitizedUsername = inputSanitizer.sanitizeStrict(request.getUsername());
             String sanitizedOrgName = inputValidator.sanitizeOrganizationName(request.getOrganizationName());
             
             // 5. Validate organization name
@@ -83,7 +85,9 @@ public class AuthService {
             }
             
             // Validate unique constraints
-            if (userRepository.existsByUsername(sanitizedUsername)) {
+            // FIX: only block reuse if an *active* user holds the username.
+            // Soft-deleted users (active=false) free up their username.
+            if (userRepository.existsByUsernameAndActiveTrue(sanitizedUsername)) {
                 log.error("Username already exists: {}", sanitizedUsername);
                 throw new RuntimeException("Username already exists");
             }
@@ -103,6 +107,11 @@ public class AuthService {
             Organization organization = new Organization();
             organization.setName(sanitizedOrgName);
             organization.setActive(true);
+            // Generate URL-safe slug from org name
+            String slug = sanitizedOrgName.toLowerCase()
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-|-$", "");
+            organization.setSlug(slug);
             Organization savedOrg = organizationRepository.save(organization);
             log.info("Organization created with ID: {}", savedOrg.getId());
             
@@ -161,7 +170,8 @@ public class AuthService {
                 savedUser.getRole(), 
                 savedUser.getId(),
                 savedOrg.getId(),
-                savedOrg.getName()
+                savedOrg.getName(),
+                null // jobTitle
             );
             
             log.info("=== REGISTRATION SUCCESS ===");
@@ -179,6 +189,7 @@ public class AuthService {
     /**
      * Login user with account lockout protection
      */
+    @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request, String ipAddress) {
         try {
             String email = request.getUsername().toLowerCase().trim();
@@ -245,7 +256,8 @@ public class AuthService {
                     user.getRole(), 
                     user.getId(),
                     org != null ? org.getId() : null,
-                    org != null ? org.getName() : null
+                    org != null ? org.getName() : null,
+                    user.getJobTitle()
                 );
                 
             } catch (Exception authException) {
@@ -284,7 +296,7 @@ public class AuthService {
             RevokedToken revokedToken = new RevokedToken();
             revokedToken.setToken(token);
             revokedToken.setExpiresAt(
-                expiration.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime()
+                expiration.toInstant().atZone(ZoneId.of("UTC")).toLocalDateTime()
             );
             revokedToken.setReason("LOGOUT");
             
@@ -301,8 +313,13 @@ public class AuthService {
      */
     @Transactional
     public void requestPasswordReset(String email) {
-        User user = userRepository.findByEmailIgnoreCase(email.toLowerCase().trim())
-            .orElseThrow(() -> new RuntimeException("Email not found"));
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email.toLowerCase().trim());
+        if (userOpt.isEmpty()) {
+            // Silent return — same timing, no enumeration signal
+            log.info("Password reset requested for unknown email (ignored)");
+            return;
+        }
+        User user = userOpt.get();
         
         // Check if user already has a recent reset request (prevent spam)
         Optional<PasswordReset> existingReset = passwordResetRepository
@@ -310,7 +327,9 @@ public class AuthService {
         
         if (existingReset.isPresent() && 
             existingReset.get().getCreatedAt().isAfter(LocalDateTime.now().minusMinutes(5))) {
-            throw new RuntimeException("Password reset already requested. Please check your email or wait 5 minutes.");
+            // Silent return — don't reveal that this is a recent request
+            log.info("Password reset already requested recently (ignored)");
+            return;
         }
         
         // Create reset token

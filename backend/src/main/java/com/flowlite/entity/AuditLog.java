@@ -29,6 +29,7 @@ public class AuditLog {
     
     private String username;
     
+    @Column(columnDefinition = "TEXT")
     private String details;
     
     public AuditLog(String action, String entity, String username, String details) {

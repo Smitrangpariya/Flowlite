@@ -44,6 +44,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+            // CSRF disabled: JWT is in a SameSite=Strict httpOnly cookie (prod),
+            // which prevents cross-site request forgery. Dev uses SameSite=Lax.
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> {
@@ -61,27 +63,33 @@ public class SecurityConfig {
                     .requestMatchers("/swagger-ui/**").permitAll()
                     .requestMatchers("/swagger-ui.html").permitAll()
                     .requestMatchers("/v3/api-docs/**").permitAll()
-                    .requestMatchers("/swagger-resources/**").permitAll()
-                    
-                    // Admin-only endpoints
-                    .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                    
-                    // All other API endpoints require authentication
-                    .requestMatchers("/api/**").authenticated()
-                    
-                    .anyRequest().authenticated();
+                    .requestMatchers("/swagger-resources/**").permitAll();
                 
                 // H2 console — only permit when enabled (dev profile)
                 if (h2ConsoleEnabled) {
                     auth.requestMatchers("/h2-console/**").permitAll();
                 }
+                
+                // Admin-only endpoints
+                auth.requestMatchers("/api/admin/**").hasRole("ADMIN")
+                    
+                    // All other API endpoints require authentication
+                    .requestMatchers("/api/**").authenticated()
+                    
+                    .anyRequest().authenticated();
             })
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-            .headers(headers -> headers.frameOptions(frame -> frame.deny()));
+            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+        
+        // Allow H2 console frames in dev
+        if (h2ConsoleEnabled) {
+            http.headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
+        } else {
+            http.headers(headers -> headers.frameOptions(frame -> frame.deny()));
+        }
         
         return http.build();
     }
@@ -91,7 +99,13 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowedHeaders(List.of(
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "X-Requested-With",
+            "Cache-Control"
+        ));
         configuration.setAllowCredentials(true);
         configuration.setExposedHeaders(List.of("Set-Cookie", "X-Request-Id"));
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

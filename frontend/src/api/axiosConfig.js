@@ -17,20 +17,11 @@ const api = axios.create({
 // by the browser via withCredentials: true. The JwtFilter reads the cookie.
 
 // RESPONSE INTERCEPTOR
+// NOTE: 401 handling is owned by AuthContext.jsx (has access to useNavigate)
 api.interceptors.response.use(
     (response) => response,
     (error) => {
         const status = error.response?.status;
-
-        if (status === 401) {
-            // Cookie expired or invalid — clear local user data and redirect
-            localStorage.removeItem('user');
-            localStorage.removeItem('organization');
-            // Only redirect if not already on login page
-            if (!window.location.pathname.includes('/login')) {
-                window.location.href = '/login';
-            }
-        }
 
         if (status === 403) {
             const errorCode = error.response?.data?.code;

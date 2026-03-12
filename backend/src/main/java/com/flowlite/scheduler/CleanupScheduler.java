@@ -8,6 +8,7 @@ import com.flowlite.repository.AuditLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,7 @@ import java.time.LocalDateTime;
  * Removes expired tokens and old records to prevent database bloat
  * Runs daily at 2 AM
  */
+@Profile("prod")
 @Component
 @RequiredArgsConstructor
 @Slf4j

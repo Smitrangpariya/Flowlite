@@ -9,6 +9,7 @@ import com.flowlite.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -16,7 +17,8 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 
 @Component
-@Profile("!production")
+@Profile("!prod")
+@DependsOn("flywayInitializer")
 @RequiredArgsConstructor
 @Slf4j
 public class DataSeeder implements CommandLineRunner {
@@ -32,7 +34,7 @@ public class DataSeeder implements CommandLineRunner {
     
     @Override
     public void run(String... args) {
-        if (userRepository.count() == 0) {
+        if (organizationRepository.count() == 0) {
             seedOrganization();
             seedUsers();
             seedProjectsAndTasks();

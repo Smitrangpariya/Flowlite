@@ -30,9 +30,12 @@ public class NotificationService {
             
             Notification savedNotification = notificationRepository.save(notification);
             
-            // Broadcast to user's private topic
-            String destination = "/topic/user/" + recipient.getId() + "/notifications";
-            messagingTemplate.convertAndSend(destination, savedNotification);
+            // Send to user-scoped queue — only the target user receives this
+            messagingTemplate.convertAndSendToUser(
+                recipient.getUsername(),
+                "/queue/notifications",
+                savedNotification
+            );
             
             log.debug("Notification created for user {}: {}", recipient.getUsername(), content);
         } catch (Exception e) {

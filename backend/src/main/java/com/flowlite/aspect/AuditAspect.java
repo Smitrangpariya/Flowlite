@@ -121,21 +121,21 @@ public class AuditAspect {
     @AfterReturning(pointcut = "taskUpdate()", returning = "result")
     public void logTaskUpdate(JoinPoint joinPoint, Object result) {
         Object[] args = joinPoint.getArgs();
-        Long taskId = (Long) args[0];
+        String taskId = (args.length > 0 && args[0] instanceof Long) ? String.valueOf(args[0]) : "unknown";
         logAction("TASK_UPDATED", "Task", "Task #" + taskId + " updated", joinPoint);
     }
     
     @AfterReturning("taskDeletion()")
     public void logTaskDeletion(JoinPoint joinPoint) {
         Object[] args = joinPoint.getArgs();
-        Long taskId = (Long) args[0];
+        String taskId = (args.length > 0 && args[0] instanceof Long) ? String.valueOf(args[0]) : "unknown";
         logAction("TASK_DELETED", "Task", "Task #" + taskId + " deleted", joinPoint);
     }
     
     @AfterReturning(pointcut = "taskStatusChange()", returning = "result")
     public void logTaskStatusChange(JoinPoint joinPoint, Object result) {
         Object[] args = joinPoint.getArgs();
-        Long taskId = (Long) args[0];
+        String taskId = (args.length > 0 && args[0] instanceof Long) ? String.valueOf(args[0]) : "unknown";
         logAction("TASK_STATUS_CHANGED", "Task", "Task #" + taskId + " status changed", joinPoint);
     }
     
@@ -178,14 +178,14 @@ public class AuditAspect {
     @AfterReturning("boardDeletion()")
     public void logBoardDeletion(JoinPoint joinPoint) {
         Object[] args = joinPoint.getArgs();
-        Long boardId = (Long) args[0];
+        String boardId = (args.length > 0 && args[0] instanceof Long) ? String.valueOf(args[0]) : "unknown";
         logAction("BOARD_DELETED", "Board", "Board #" + boardId + " deleted", joinPoint);
     }
     
     @AfterReturning(pointcut = "boardUpdate()", returning = "result")
     public void logBoardUpdate(JoinPoint joinPoint, Object result) {
         Object[] args = joinPoint.getArgs();
-        Long boardId = (Long) args[0];
+        String boardId = (args.length > 0 && args[0] instanceof Long) ? String.valueOf(args[0]) : "unknown";
         logAction("BOARD_UPDATED", "Board", "Board #" + boardId + " updated", joinPoint);
     }
     
@@ -213,7 +213,7 @@ public class AuditAspect {
     @AfterReturning("userDeactivation()")
     public void logUserDeactivation(JoinPoint joinPoint) {
         Object[] args = joinPoint.getArgs();
-        Long userId = (Long) args[0];
+        String userId = (args.length > 0 && args[0] instanceof Long) ? String.valueOf(args[0]) : "unknown";
         logAction("USER_DEACTIVATED", "User", "User #" + userId + " deactivated by admin", joinPoint);
     }
     

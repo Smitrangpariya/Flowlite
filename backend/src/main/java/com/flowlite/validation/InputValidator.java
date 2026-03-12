@@ -8,29 +8,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class InputValidator {
-    
-    /**
-     * Sanitize input to prevent XSS
-     */
-    public String sanitizeInput(String input) {
-        if (input == null) {
-            return null;
-        }
-        
-        // Remove script tags and dangerous HTML
-        String sanitized = input
-            .replaceAll("(?i)<script[^>]*>.*?</script>", "")
-            .replaceAll("(?i)<iframe[^>]*>.*?</iframe>", "")
-            .replaceAll("(?i)<object[^>]*>.*?</object>", "")
-            .replaceAll("(?i)<embed[^>]*>", "")
-            .replaceAll("(?i)javascript:", "")
-            .replaceAll("(?i)on(click|load|error|mouse|key)\\s*=", "")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;")
-            .trim();
-        
-        return sanitized;
-    }
+    // NOTE: sanitizeInput() was REMOVED — it used bypassable regex.\n    // Use InputSanitizer.sanitizeStrict() (OWASP HTML Sanitizer) instead.\n
     
     /**
      * Validate email format (RFC 5322 compliant)

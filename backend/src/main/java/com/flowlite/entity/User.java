@@ -62,6 +62,9 @@ public class User implements UserDetails {
     
     private java.time.LocalDateTime emailVerifiedAt;
     
+    @Column(name = "job_title", length = 100)
+    private String jobTitle;
+    
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
