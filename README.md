@@ -51,7 +51,7 @@ A lightweight, workflow-oriented project execution platform with real-time colla
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/Smitrangpariya/Flowlite.git
 cd FlowLite/backend
 
 # Copy environment variables
